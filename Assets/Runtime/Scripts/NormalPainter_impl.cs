@@ -144,7 +144,7 @@ namespace UTJ.NormalPainter
             if (!go) { return false; }
 
             var terrain = go.GetComponent<Terrain>();
-            if(terrain)
+            if (terrain)
             {
                 // terrain doesn't support rotation and scale
                 transform = Matrix4x4.TRS(go.GetComponent<Transform>().position, Quaternion.identity, Vector3.one);
@@ -187,8 +187,8 @@ namespace UTJ.NormalPainter
             if (!terrain) { return false; }
 
             var tdata = terrain.terrainData;
-            var w = tdata.heightmapWidth;
-            var h = tdata.heightmapHeight;
+            var w = tdata.heightmapResolution;
+            var h = tdata.heightmapResolution;
             var heightmap = new PinnedArray2D<float>(tdata.GetHeights(0, 0, w, h));
 
             vertexCount = w * h;
@@ -197,7 +197,8 @@ namespace UTJ.NormalPainter
                 vertices, normals, uv, indices);
             return true;
         }
-        [DllImport("NormalPainterCore")] static extern void npGenerateTerrainMesh(
+        [DllImport("NormalPainterCore")]
+        static extern void npGenerateTerrainMesh(
             IntPtr heightmap, int width, int height, Vector3 size,
             IntPtr dst_vertices, IntPtr dst_normals, IntPtr dst_uv, IntPtr dst_indices);
 
@@ -247,7 +248,7 @@ namespace UTJ.NormalPainter
 
         public Vector3 ToWorldVector(Vector3 v, Coordinate c)
         {
-            switch(c)
+            switch (c)
             {
                 case Coordinate.Local: return GetComponent<Transform>().localToWorldMatrix.MultiplyVector(v);
                 case Coordinate.Pivot: return m_settings.pivotRot * v;
@@ -616,7 +617,7 @@ namespace UTJ.NormalPainter
                 m_selectionPos = GetComponent<Transform>().position;
             }
 
-            if(prevSelected == 0 && m_numSelected == 0)
+            if (prevSelected == 0 && m_numSelected == 0)
             {
                 // no need to upload
             }
@@ -635,7 +636,8 @@ namespace UTJ.NormalPainter
             if (precision == TangentsPrecision.Precise)
             {
                 m_meshTarget.RecalculateTangents();
-                m_tangentsPredeformed.LockList(l => {
+                m_tangentsPredeformed.LockList(l =>
+                {
                     m_meshTarget.GetTangents(l);
                 });
 
@@ -674,7 +676,7 @@ namespace UTJ.NormalPainter
         {
             Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
             float d = 0.0f;
-            if(Raycast(ray, ref ti, ref d))
+            if (Raycast(ray, ref ti, ref d))
             {
                 pos = ray.origin + ray.direction * d;
                 return true;
@@ -827,12 +829,12 @@ namespace UTJ.NormalPainter
         {
             switch (mirrorMode)
             {
-                case MirrorMode.RightToLeft:    return Vector3.left;
-                case MirrorMode.LeftToRight:    return Vector3.right;
-                case MirrorMode.ForwardToBack:  return Vector3.back;
-                case MirrorMode.BackToForward:  return Vector3.forward;
-                case MirrorMode.UpToDown:       return Vector3.down;
-                case MirrorMode.DownToUp:       return Vector3.up;
+                case MirrorMode.RightToLeft: return Vector3.left;
+                case MirrorMode.LeftToRight: return Vector3.right;
+                case MirrorMode.ForwardToBack: return Vector3.back;
+                case MirrorMode.BackToForward: return Vector3.forward;
+                case MirrorMode.UpToDown: return Vector3.down;
+                case MirrorMode.DownToUp: return Vector3.up;
             }
             return Vector3.up;
         }
@@ -849,7 +851,7 @@ namespace UTJ.NormalPainter
                 m_mirrorRelation = new PinnedList<int>(m_points.Count);
                 needsSetup = true;
             }
-            else if(m_prevMirrorMode != m_settings.mirrorMode)
+            else if (m_prevMirrorMode != m_settings.mirrorMode)
             {
                 m_prevMirrorMode = m_settings.mirrorMode;
                 needsSetup = true;
@@ -908,7 +910,7 @@ namespace UTJ.NormalPainter
 
             int numSubmeshes = m_meshTarget.subMeshCount;
 
-            if(separateSubmesh && numSubmeshes > 1)
+            if (separateSubmesh && numSubmeshes > 1)
             {
                 for (int si = 0; si < numSubmeshes; ++si)
                 {
@@ -987,10 +989,19 @@ namespace UTJ.NormalPainter
             var colors = new Color[m_normals.Count];
             for (int i = 0; i < colors.Length; ++i)
             {
-                colors[i].r = m_normals[i].x * 0.5f + 0.5f;
-                colors[i].g = m_normals[i].y * 0.5f + 0.5f;
-                colors[i].b = m_normals[i].z * 0.5f + 0.5f;
-                colors[i].a = 1.0f;
+                var base_tangent = m_tangentsBase[i];
+                var base_normal = m_normalsBase[i];
+                Vector3 base_binormal = Vector3.Normalize(Vector3.Cross(base_normal, base_tangent) * base_tangent.w);
+                var tbn = new Matrix4x4(new Vector4(base_tangent.x, base_tangent.y, base_tangent.z),
+                                        new Vector4(base_binormal.x, base_binormal.y, base_binormal.z),
+                                        new Vector4(base_normal.x, base_normal.y, base_normal.z),
+                                        Vector4.zero).transpose;
+                var new_normal = tbn.MultiplyVector(m_normals[i]).normalized;
+
+                colors[i].r = new_normal.x * 0.5f + 0.5f;
+                colors[i].g = new_normal.y * 0.5f + 0.5f;
+                colors[i].b = new_normal.z * 0.5f + 0.5f;
+                colors[i].a = 1;// m_meshTarget.colors[i].a; // ?????????
             }
             m_meshTarget.colors = colors;
 
@@ -1043,10 +1054,20 @@ namespace UTJ.NormalPainter
             for (int i = 0; i < color.Length; ++i)
             {
                 var c = color[i];
-                m_normals[i] = new Vector3(
-                    c.r * 2.0f - 1.0f,
-                    c.g * 2.0f - 1.0f,
-                    c.b * 2.0f - 1.0f);
+
+                var base_tangent = m_tangentsBase[i];
+                var base_normal = m_normalsBase[i];
+                Vector3 base_binormal = Vector3.Normalize(Vector3.Cross(base_normal, base_tangent) * base_tangent.w);
+                var tbn = new Matrix4x4(new Vector4(base_tangent.x, base_tangent.y, base_tangent.z),
+                                        new Vector4(base_binormal.x, base_binormal.y, base_binormal.z),
+                                        new Vector4(base_normal.x, base_normal.y, base_normal.z),
+                                        Vector4.zero);
+
+                m_normals[i] = tbn.MultiplyVector(new Vector3(
+                                c.r * 2 - 1,
+                                c.g * 2 - 1,
+                                c.b * 2 - 1
+                                )).normalized;
             }
             UpdateNormals();
             if (pushUndo) PushUndo();
@@ -1160,7 +1181,7 @@ namespace UTJ.NormalPainter
                 }
             }
 
-            if(data.Count == 0)
+            if (data.Count == 0)
             {
                 Debug.LogWarning("Nothing to weld.");
                 return false;
@@ -1315,120 +1336,154 @@ namespace UTJ.NormalPainter
             AssetDatabase.CreateAsset(Instantiate(m_settings), path);
         }
 
-        [DllImport("NormalPainterCore")] static extern int npRaycast(
+        [DllImport("NormalPainterCore")]
+        static extern int npRaycast(
             ref npMeshData model, Vector3 pos, Vector3 dir, ref int tindex, ref float distance);
 
-        [DllImport("NormalPainterCore")] static extern Vector3 npPickNormal(
+        [DllImport("NormalPainterCore")]
+        static extern Vector3 npPickNormal(
             ref npMeshData model, Vector3 pos, int ti);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectSingle(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectSingle(
             ref npMeshData model, ref Matrix4x4 viewproj, Vector2 rmin, Vector2 rmax, Vector3 campos, float strength, bool frontfaceOnly);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectTriangle(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectTriangle(
             ref npMeshData model, Vector3 pos, Vector3 dir, float strength);
-        
-        [DllImport("NormalPainterCore")] static extern int npSelectEdge(
+
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectEdge(
             ref npMeshData model, float strength, bool clear, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectHole(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectHole(
             ref npMeshData model, float strength, bool clear, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectConnected(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectConnected(
             ref npMeshData model, float strength, bool clear);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectRect(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectRect(
             ref npMeshData model, ref Matrix4x4 viewproj, Vector2 rmin, Vector2 rmax, Vector3 campos, float strength, bool frontfaceOnly);
 
-        [DllImport("NormalPainterCore")] static extern int npSelectLasso(
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectLasso(
             ref npMeshData model, ref Matrix4x4 viewproj, Vector2[] lasso, int numLassoPoints, Vector3 campos, float strength, bool frontfaceOnly);
-        
-        [DllImport("NormalPainterCore")] static extern int npSelectBrush(
+
+        [DllImport("NormalPainterCore")]
+        static extern int npSelectBrush(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples);
 
-        [DllImport("NormalPainterCore")] static extern int npUpdateSelection(
+        [DllImport("NormalPainterCore")]
+        static extern int npUpdateSelection(
             ref npMeshData model,
             ref Vector3 selection_pos, ref Vector3 selection_normal);
 
 
-        [DllImport("NormalPainterCore")] static extern int npBrushReplace(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushReplace(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, Vector3 amount, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npBrushFlow(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushFlow(
             ref npMeshData model,
             Vector3 pos, Vector3 prevPos, float radius, float strength, int num_bsamples, IntPtr bsamples, Vector3 baseNormal, bool mask);
 
 
-        [DllImport("NormalPainterCore")] static extern int npBrushPaint(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushPaint(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, Vector3 baseNormal, int blend_mode, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npBrushSmooth(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushSmooth(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npBrushProjection(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushProjection(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, bool mask,
             ref npMeshData normal_source, IntPtr ray_dirs);
-        [DllImport("NormalPainterCore")] static extern int npBrushProjection2(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushProjection2(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, bool mask,
             ref npMeshData normal_source, Vector3 ray_dir);
 
-        [DllImport("NormalPainterCore")] static extern int npBrushLerp(
+        [DllImport("NormalPainterCore")]
+        static extern int npBrushLerp(
             ref npMeshData model,
             Vector3 pos, float radius, float strength, int num_bsamples, IntPtr bsamples, IntPtr baseNormals, IntPtr normals, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npAssign(
+        [DllImport("NormalPainterCore")]
+        static extern int npAssign(
             ref npMeshData model, Vector3 value);
-        
-        [DllImport("NormalPainterCore")] static extern int npMove(
+
+        [DllImport("NormalPainterCore")]
+        static extern int npMove(
             ref npMeshData model, Vector3 amount);
-        
-        [DllImport("NormalPainterCore")] static extern int npRotate(
+
+        [DllImport("NormalPainterCore")]
+        static extern int npRotate(
             ref npMeshData model, Quaternion amount, Quaternion pivotRot);
 
-        [DllImport("NormalPainterCore")] static extern int npRotatePivot(
+        [DllImport("NormalPainterCore")]
+        static extern int npRotatePivot(
             ref npMeshData model, Quaternion amount, Vector3 pivotPos, Quaternion pivotRot);
 
-        [DllImport("NormalPainterCore")] static extern int npScale(
+        [DllImport("NormalPainterCore")]
+        static extern int npScale(
             ref npMeshData model, Vector3 amount, Vector3 pivotPos, Quaternion pivotRot);
 
-        [DllImport("NormalPainterCore")] static extern int npSmooth(
+        [DllImport("NormalPainterCore")]
+        static extern int npSmooth(
             ref npMeshData model, float radius, float strength, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npWeld(
+        [DllImport("NormalPainterCore")]
+        static extern int npWeld(
             ref npMeshData model, bool smoothing, float weldAngle, bool mask);
-        [DllImport("NormalPainterCore")] static extern int npWeld2(
+        [DllImport("NormalPainterCore")]
+        static extern int npWeld2(
             ref npMeshData model, int num_targets, npMeshData[] targets,
             int weldMode, float weldAngle, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern int npBuildMirroringRelation(
+        [DllImport("NormalPainterCore")]
+        static extern int npBuildMirroringRelation(
             ref npMeshData model, Vector3 plane_normal, float epsilon, IntPtr relation);
 
-        [DllImport("NormalPainterCore")] static extern void npApplyMirroring(
+        [DllImport("NormalPainterCore")]
+        static extern void npApplyMirroring(
             int num_vertices, IntPtr relation, Vector3 plane_normal, IntPtr normals);
 
-        [DllImport("NormalPainterCore")] static extern void npProjectNormals(
+        [DllImport("NormalPainterCore")]
+        static extern void npProjectNormals(
             ref npMeshData model, ref npMeshData target, IntPtr ray_dir, bool mask);
-        [DllImport("NormalPainterCore")] static extern void npProjectNormals2(
+        [DllImport("NormalPainterCore")]
+        static extern void npProjectNormals2(
             ref npMeshData model, ref npMeshData target, Vector3 ray_dir, bool mask);
 
-        [DllImport("NormalPainterCore")] static extern void npApplySkinning(
+        [DllImport("NormalPainterCore")]
+        static extern void npApplySkinning(
             ref npSkinData skin,
             IntPtr ipoints, IntPtr inormals, IntPtr itangents,
             IntPtr opoints, IntPtr onormals, IntPtr otangents);
 
-        [DllImport("NormalPainterCore")] static extern void npApplyReverseSkinning(
+        [DllImport("NormalPainterCore")]
+        static extern void npApplyReverseSkinning(
             ref npSkinData skin,
             IntPtr ipoints, IntPtr inormals, IntPtr itangents,
             IntPtr opoints, IntPtr onormals, IntPtr otangents);
-        
-        [DllImport("NormalPainterCore")] static extern int npGenerateNormals(
+
+        [DllImport("NormalPainterCore")]
+        static extern int npGenerateNormals(
             ref npMeshData model, IntPtr dst);
-        [DllImport("NormalPainterCore")] static extern int npGenerateTangents(
+        [DllImport("NormalPainterCore")]
+        static extern int npGenerateTangents(
             ref npMeshData model, IntPtr dst);
 
         [DllImport("NormalPainterCore")] static extern void npInitializePenInput();

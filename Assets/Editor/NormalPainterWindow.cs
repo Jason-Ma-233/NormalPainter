@@ -35,12 +35,12 @@ namespace UTJ.NormalPainterEditor
         private void OnEnable()
         {
             isOpen = true;
-            SceneView.onSceneGUIDelegate += OnSceneGUI;
+            SceneView.duringSceneGui += OnSceneGUI;
         }
 
         private void OnDisable()
         {
-            SceneView.onSceneGUIDelegate -= OnSceneGUI;
+            SceneView.duringSceneGui -= OnSceneGUI;
             isOpen = false;
         }
 

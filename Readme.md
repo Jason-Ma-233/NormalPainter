@@ -7,6 +7,11 @@ Unity 上でポリゴンモデルの法線編集を可能にするツールで�
 Unity 2017.1 系以上、Windows (64bit) or Mac、**D3D11 世代以降の Graphics API** の環境で動作します。
 (ターゲットプラットフォームが Standalone ではない場合、D3D9 世代に機能が限定されて正常動作しなくなることがあるのでご注意ください)
 
+## --特色功能--
+
+- 支持HDRP
+- 法线写入顶点色的算法从直接写入改为写入法线贴图
+
 ## 使い方
 - [NormalPainter.unitypackage](https://github.com/unity3d-jp/NormalPainter/releases/download/20180116/NormalPainter.unitypackage) をプロジェクトにインポート
   - Unity 2018.3 以降の場合、このリポジトリを直接インポートすることもできます。プロジェクト内にある Packages/manifest.json をテキストエディタで開き、"dependencies" に以下の行を加えます。
